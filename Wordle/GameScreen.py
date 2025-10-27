@@ -2,15 +2,12 @@
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 
 import pygame
-import pygame.font
 from Screen import Screen
 from ResultScreen import ResultScreen
 
 COLOR_RANK = {"unused": 0, "gray": 1, "yellow": 2, "green": 3}
 
 class GameScreen(Screen):
-    is_pygame_screen = True
-
     def __init__(self, app):
         self.app = app
         self.answer = app.context["answer"]
@@ -26,12 +23,12 @@ class GameScreen(Screen):
 
         # Pygame
         pygame.init()
-        self.W, self.H = 600, 800
+        self.W, self.H = 1200, 800
         self.surface = pygame.display.set_mode((self.W, self.H))
-        pygame.display.set_caption("Wordle - Game")
+        pygame.display.set_caption("Wordle")
 
-        # Theme (easy to swap later)
-        self.bg          = (18, 18, 19)
+        # Theme 
+        self.background          = (18, 18, 19)
         self.grid_empty  = (58, 58, 60)
         self.text_color  = (232, 232, 232)
         self.clr_green   = (83, 141, 78)
@@ -41,11 +38,15 @@ class GameScreen(Screen):
         self.clr_keytext = (255, 255, 255)
 
         # Fonts
-        font_name = pygame.font.match_font("Consolas)")
+        font_name = pygame.font.match_font("Consolas")
         self.font_cell = pygame.font.Font(None, 64)
         self.font_key  = pygame.font.Font(font_name or None, 40)
         self.font_key_small = pygame.font.Font(font_name or None, 26)
         self.font_msg  = pygame.font.Font(None, 32)
+
+        # Normalize word list (UPPER) + hold key to delete smoothly
+        self.words_set = ({w.strip().upper() for w in app.words} if hasattr(app, "words") else set())
+        pygame.key.set_repeat(300, 35)
 
         # Board state
         self.board  = [[""] * self.cols for _ in range(self.rows)]
@@ -62,7 +63,7 @@ class GameScreen(Screen):
         self.grid_left  = (self.W - grid_w) // 2
 
         # Keyboard layout
-        self.kb_top    = 520
+        self.kb_top    = 560
         self.kb_rows   = ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]
         self.key_rects = []  # list[(pygame.Rect, label)]
         self.key_state = {c: "unused" for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"}
@@ -121,9 +122,11 @@ class GameScreen(Screen):
 
         # API for the word
         ok = self.meaning_cache.get(word)
+
         if ok is None and self.use_api_validate:
             ok = self._has_meaning(word)
             self.meaning_cache[word] = ok
+
         if ok:
             return True
 
@@ -131,10 +134,13 @@ class GameScreen(Screen):
         for base in self._plural_singular_candidates(word):
             if self.words_set and base in self.words_set:
                 return True
+
             okb = self.meaning_cache.get(base)
+
             if okb is None and self.use_api_validate:
                 okb = self._has_meaning(base)
                 self.meaning_cache[base] = okb
+
             if okb:
                 return True
 
@@ -147,11 +153,11 @@ class GameScreen(Screen):
           Row0: 10 letters
           Row1:  9 letters (centered)
           Row2: [ENTER] + 7 letters + [BKSP], centered as a whole.
-        If too wide, auto-scale to fit.
         """
+
         key_w, key_h = 48, 58
         gap = 8
-        margin_x = 24  # left/right padding
+        margin_x = 24  # left / right padding
 
         self.key_rects.clear()
 
@@ -256,13 +262,17 @@ class GameScreen(Screen):
     def _push_char(self, ch: str):
         if self.cur_row >= self.rows:
             return
+        if self.message:
+            self._set_message("")
         if self.cur_col < self.cols:
             self.board[self.cur_row][self.cur_col] = ch
-            self.cur_col += 1
+        self.cur_col += 1
 
     def _backspace(self):
         if self.cur_row >= self.rows:
             return
+        if self.message:
+            self._set_message("")
         if self.cur_col > 0:
             self.cur_col -= 1
             self.board[self.cur_row][self.cur_col] = ""
@@ -273,31 +283,20 @@ class GameScreen(Screen):
             return
 
         guess = "".join(self.board[self.cur_row])
-
-        # -------- VALIDATION: local list -> API fallback --------
-        valid = True
-        if self.words_set and guess not in self.words_set:
-            valid = False
-
-        if not valid and self.use_api_validate:
-            ok = self.meaning_cache.get(guess)
-            if ok is None:
-                ok = self._has_meaning(guess)
-                self.meaning_cache[guess] = ok
-            valid = ok
+        valid = self._is_valid_word(guess)
 
         if not valid:
             self._set_message("Not in dictionary.")
             return
 
-        # -------- Evaluate colors --------
+        # Evaluate colors 
         row_colors = self._evaluate_guess(guess, self.answer)
         self.colors[self.cur_row] = row_colors
 
         for c, col in zip(guess, row_colors):
             self._upgrade_key_state(c, {"green": "green", "yellow": "yellow", "gray": "gray"}[col])
 
-        # -------- Win/Lose/Next --------
+        # Win / Lose / Next 
         if guess == self.answer:
             self.app.context["result_type"] = "victory"
             self.app.set_screen(ResultScreen(self.app, "victory", self.answer))
@@ -305,6 +304,7 @@ class GameScreen(Screen):
 
         self.cur_row += 1
         self.cur_col = 0
+
         if self.cur_row >= self.rows:
             self.app.context["result_type"] = "defeat"
             self.app.set_screen(ResultScreen(self.app, "defeat", self.answer))
@@ -345,7 +345,7 @@ class GameScreen(Screen):
         pass
 
     def render(self):
-        self.surface.fill(self.bg)
+        self.surface.fill(self.background)
         self._draw_board()
         self._draw_keyboard()
         self._draw_message()
@@ -380,7 +380,7 @@ class GameScreen(Screen):
 
     def _draw_keyboard(self):
         for rect, label in self.key_rects:
-            # fill color by state
+            # Fill color by state
             if label in self.key_state:
                 st = self.key_state[label]
                 if st == "green":
@@ -396,28 +396,29 @@ class GameScreen(Screen):
 
             pygame.draw.rect(self.surface, fill, rect, border_radius=8)
 
-            # --- choose label & font ---
+            # Choose label & font 
             draw_label = label
-            font_to_use = self.font_key   # default
+            font_to_use = self.font_key   
 
             if label == "BKSP":
-                # use arrow if the font can render it; else fall back
                 arrow = "←"
                 if hasattr(self, "_font_supports") and self._font_supports(arrow):
                     draw_label = arrow
                 else:
                     draw_label = "BKSP"
+
             elif label == "ENTER":
                 draw_label = "ENTER"
-                font_to_use = self.font_key_small   # ← smaller font just for ENTER
+                font_to_use = self.font_key_small   
 
-            # --- render with chosen font ---
+            # Render with chosen font 
             txt = font_to_use.render(draw_label, True, self.clr_keytext)
             self.surface.blit(txt, txt.get_rect(center=rect.center))
 
     def _draw_message(self):
         if not self.message:
             return
+
         surf = self.font_msg.render(self.message, True, (250, 250, 250))
         rect = surf.get_rect(center=(self.W // 2, 36))
         self.surface.blit(surf, rect)

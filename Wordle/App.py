@@ -5,14 +5,14 @@ from WordList import load_words, choose_random_word
 
 class App:
     def __init__(self):
-        # Load all valid 5-letter words from file
+        # Load all valid 5 - letter words from file
         self.words = load_words("WordList.txt")
 
-        # Store game-wide data in a shared dictionary
+        # Store game - wide data in a shared dictionary
         self.context = {
             "answer": choose_random_word(self.words), # The target word to guess
             "attempts": [],                           # List of previous guesses
-            "max_attempts": 5,                        # Maximum allowed guesses
+            "max_attempts": 6,                        # Maximum allowed guesses
             "result_type": None,                      # "victory" | "defeat"
         }
 
@@ -32,28 +32,26 @@ class App:
         self.context["result_type"] = None
         self.set_screen(GameScreen(self))
         
+    # Run game
     def run(self):
         import pygame
 
         clock = None
         while self.current is not None:
-            # If current screen is a pygame screen, pump events and limit FPS
-            if hasattr(self.current, "is_pygame_screen") and self.current.is_pygame_screen:
-                if clock is None:
-                    clock = pygame.time.Clock()
+            if clock is None:
+                clock = pygame.time.Clock()
 
-                # Render first (optional ordering), then handle events
-                self.current.render()
-                for e in pygame.event.get():
-                    self.current.handle(e)
+            self.current.render()
 
-                # Let screen update any internal state
-                self.current.update()
-                clock.tick(60)
-            else:
-                # CLI screen: render once, then block on handle() which uses input()
-                self.current.render()
-                self.current.handle(None)
-                self.current.update()
+            for e in pygame.event.get():
+                self.current.handle(e)
+                if self.current is None:
+                        break
+
+            if self.current is None:
+                break
+
+            self.current.update()
+            clock.tick(60)
             
 
